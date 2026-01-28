@@ -1,30 +1,29 @@
-import json
+import requests
+from config import UPSTOX_ACCESS_TOKEN
+from services.instrument_map import INSTRUMENT_MAP
 
-DATA_FILE = "/tmp/live_quotes.json"
+HEADERS = {
+    "Accept": "application/json",
+    "Authorization": f"Bearer {UPSTOX_ACCESS_TOKEN}"
+}
 
+def get_all_quotes():
+    keys = list(INSTRUMENT_MAP.values())
+    joined = ",".join(keys)
 
-def load_live_data():
-    try:
-        with open(DATA_FILE) as f:
-            return json.load(f)
-    except:
-        return {}
+    url = f"https://api.upstox.com/v3/market-quote/quotes?instrument_key={joined}"
 
+    res = requests.get(url, headers=HEADERS)
+    data = res.json()
 
-def get_all_stocks():
-    data = load_live_data()
-    stocks = []
+    quotes = {}
 
-    for symbol, s in data.items():
-        stocks.append({
-            "symbol": symbol,
-            "ltp": s.get("ltp"),
-            "vwap": s.get("vwap"),
-            "high": s.get("high"),
-            "low": s.get("low"),
-            "open": s.get("open"),
-            "prev_close": s.get("prev_close"),
-            "volume": s.get("volume"),
-        })
+    if "data" in data:
+        for item in data["data"].values():
+            quotes[item["instrument_token"]] = {
+                "ltp": item["last_price"],
+                "volume": item["volume"],
+                "oi": item.get("oi", 0)
+            }
 
-    return stocks
+    return quotes
