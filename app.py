@@ -27,3 +27,12 @@ def start_collector():
 @app.get("/")
 def dashboard(request: Request):
     return templates.TemplateResponse("index.html", {"request": request})
+import json
+
+@app.get("/debug")
+def debug_data():
+    try:
+        with open("/tmp/live_quotes.json") as f:
+            return json.load(f)
+    except Exception as e:
+        return {"error": str(e)}
