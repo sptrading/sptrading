@@ -1,10 +1,23 @@
 import json
-import time
+import requests
 from datetime import datetime
-from services.market_data import get_quote
+from config import UPSTOX_ACCESS_TOKEN
 from services.instrument_map import INSTRUMENT_MAP
 
 DATA_FILE = "data/live_quotes.json"
+
+HEADERS = {
+    "Accept": "application/json",
+    "Authorization": f"Bearer {UPSTOX_ACCESS_TOKEN}"
+}
+
+BASE_URL = "https://api.upstox.com/v3"
+
+
+def get_quote(token: str):
+    url = f"{BASE_URL}/market-quote/quotes?instrument_key={token}"
+    res = requests.get(url, headers=HEADERS).json()
+    return list(res["data"].values())[0]
 
 
 def collect_data():
