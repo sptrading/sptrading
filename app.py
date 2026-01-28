@@ -1,20 +1,16 @@
 from fastapi import FastAPI
+from routes.scanner import router as scanner_router
 from threading import Thread
 from services.data_collector import start_background_collection
-from services.market_data import get_all_stocks
 
 app = FastAPI()
 
+app.include_router(scanner_router)
 
 @app.on_event("startup")
 def startup_event():
     t = Thread(target=start_background_collection, daemon=True)
     t.start()
-
-
-@app.get("/scanner")
-def scanner():
-    return get_all_stocks()
 
 
 @app.get("/")
