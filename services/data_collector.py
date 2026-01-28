@@ -1,43 +1,51 @@
+import time
 import json
 import requests
-from datetime import datetime
 from config import UPSTOX_ACCESS_TOKEN
 from services.instrument_map import INSTRUMENT_MAP
 
 DATA_FILE = "/tmp/live_quotes.json"
-
 
 HEADERS = {
     "Accept": "application/json",
     "Authorization": f"Bearer {UPSTOX_ACCESS_TOKEN}"
 }
 
-BASE_URL = "https://api.upstox.com/v3"
 
-
-def get_quote(token: str):
-    url = f"{BASE_URL}/market-quote/quotes?instrument_key={token}"
-    res = requests.get(url, headers=HEADERS).json()
-    return list(res["data"].values())[0]
+def fetch_quote(key):
+    url = f"https://api.upstox.com/v3/market-quote/quotes?instrument_key={key}"
+    r = requests.get(url, headers=HEADERS, timeout=10)
+    return r.json()
 
 
 def collect_data():
     all_data = {}
 
-    for sym, token in INSTRUMENT_MAP.items():
+    for symbol, key in INSTRUMENT_MAP.items():
         try:
-            q = get_quote(token)
-            all_data[sym] = {
+            res = fetch_quote(key)
+            q = list(res["data"].values())[0]
+
+            all_data[symbol] = {
                 "ltp": q["last_price"],
-                "open": q["open"],
-                "high": q["high"],
-                "low": q["low"],
-                "prev_close": q["prev_close"],
-                "volume": q["volume"],
-                "time": str(datetime.now())
+                "vwap": q["vwap"],
+                "high": q["ohlc"]["high"],
+                "low": q["ohlc"]["low"],
+                "open": q["ohlc"]["open"],
+                "prev_close": q["ohlc"]["close"],
+                "volume": q["volume"]
             }
+
+            time.sleep(0.2)
+
         except:
             continue
 
     with open(DATA_FILE, "w") as f:
-        json.dump(all_data, f, indent=2)
+        json.dump(all_data, f)
+
+
+def start_background_collection():
+    while True:
+        collect_data()
+        time.sleep(15)
