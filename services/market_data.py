@@ -12,37 +12,33 @@ HEADERS = {
 }
 
 
-# ---------------- QUOTE DATA ---------------- #
+# ---------------- API CALLS ---------------- #
 
-def get_quote(instrument_key: str):
-    url = f"{BASE_URL}/market-quote/quotes?instrument_key={instrument_key}"
+def get_quote(token: str):
+    url = f"{BASE_URL}/market-quote/quotes?instrument_key={token}"
     res = requests.get(url, headers=HEADERS).json()
     return list(res["data"].values())[0]
 
 
-# ---------------- INTRADAY CANDLES (5 MIN) ---------------- #
-
-def get_intraday_candles(instrument_key: str):
-    url = f"{BASE_URL}/historical-candle/intraday/{instrument_key}/minutes/5"
+def get_intraday_candles(token: str):
+    url = f"{BASE_URL}/historical-candle/intraday/{token}/minutes/5"
     res = requests.get(url, headers=HEADERS).json()
     return res["data"]["candles"]
 
 
-# ---------------- HISTORICAL (DAY) ---------------- #
-
-def get_historical_days(instrument_key: str, days=10):
+def get_historical_days(token: str, days=12):
     to_date = datetime.now().date()
-    from_date = to_date - timedelta(days=days+5)
+    from_date = to_date - timedelta(days=days)
 
     url = (
-        f"{BASE_URL}/historical-candle/{instrument_key}/day/1/"
+        f"{BASE_URL}/historical-candle/{token}/day/1/"
         f"{to_date}/{from_date}"
     )
     res = requests.get(url, headers=HEADERS).json()
     return res["data"]["candles"]
 
 
-# ---------------- MATHS FUNCTIONS ---------------- #
+# ---------------- MATHS ---------------- #
 
 def quote_maths(q):
     ltp = q["last_price"]
@@ -52,10 +48,10 @@ def quote_maths(q):
     day_high = q["high"]
     day_low = q["low"]
 
-    percent_change = ((ltp - prev_close) / prev_close) * 100
-    signal_percent = ((ltp - open_price) / open_price) * 100
+    pc = ((ltp - prev_close) / prev_close) * 100
+    sp = ((ltp - open_price) / open_price) * 100
 
-    return ltp, percent_change, signal_percent, volume, day_high, day_low, open_price
+    return ltp, pc, sp, volume, day_high, day_low, open_price
 
 
 def get_orb_high(candles):
@@ -64,8 +60,8 @@ def get_orb_high(candles):
     return max(highs)
 
 
-def volume_spike(current_volume, historical_candles):
-    vols = [c[5] for c in historical_candles[-10:]]
+def volume_spike(current_volume, hist):
+    vols = [c[5] for c in hist[-10:]]
     avg_vol = sum(vols) / len(vols)
     return current_volume / avg_vol, avg_vol
 
@@ -74,15 +70,15 @@ def candle_imbalance(candle):
     o, h, l, c = candle[1], candle[2], candle[3], candle[4]
     body = abs(c - o)
     rng = h - l if h - l != 0 else 1
-    imbalance = body / rng
+    imb = body / rng
     side = "BUY" if c > o else "SELL"
-    return imbalance, side
+    return imb, side
 
 
-def big_candle(current, candles):
+def big_candle(curr, candles):
     sizes = [(c[2] - c[3]) for c in candles[-10:]]
     avg_size = sum(sizes) / len(sizes)
-    curr_size = current[2] - current[3]
+    curr_size = curr[2] - curr[3]
     return curr_size > (2 * avg_size)
 
 
@@ -93,9 +89,23 @@ def volatility_factor(day_high, day_low, hist):
     return today_range / avg_range
 
 
-def rfac(ltp, open_p, day_high, day_low, vol_spike, vol_factor):
-    day_range = day_high - day_low if day_high - day_low != 0 else 1
-    return ((ltp - open_p) / day_range) * vol_spike * vol_factor
+def calculate_vwap(candles):
+    total_pv = 0
+    total_vol = 0
+
+    for c in candles:
+        h, l, close, vol = c[2], c[3], c[4], c[5]
+        tp = (h + l + close) / 3
+        total_pv += tp * vol
+        total_vol += vol
+
+    return total_pv / total_vol if total_vol else 0
+
+
+def rfac(ltp, open_p, dh, dl, vspike, vfac, vwap):
+    day_range = dh - dl if dh - dl != 0 else 1
+    vwap_factor = abs(ltp - vwap) / day_range
+    return ((ltp - open_p) / day_range) * vspike * vfac * vwap_factor
 
 
 # ---------------- CONDITIONS ---------------- #
@@ -104,18 +114,25 @@ def is_breakout(pc, sp, ltp, orb, vspike):
     return pc > 3 and sp > 2 and ltp > orb and vspike > 2
 
 
-def is_intraday_boost(rf, pc, imb, big, vspike):
-    return rf > 3 and abs(pc) > 2 and imb > 0.6 and big and vspike > 3
+def is_intraday_boost(rf, pc, imb, big, vspike, ltp, vwap):
+    return (
+        rf > 3 and
+        abs(pc) > 2 and
+        imb > 0.6 and
+        big and
+        vspike > 3 and
+        ((ltp > vwap) or (ltp < vwap))
+    )
 
 
 # ---------------- MAIN SCANNER ---------------- #
 
 def scan_stock(symbol: str):
-    key = INSTRUMENT_MAP[symbol]
+    token = INSTRUMENT_MAP[symbol]
 
-    quote = get_quote(key)
-    candles = get_intraday_candles(key)
-    hist = get_historical_days(key)
+    quote = get_quote(token)
+    candles = get_intraday_candles(token)
+    hist = get_historical_days(token)
 
     ltp, pc, sp, vol, dh, dl, op = quote_maths(quote)
 
@@ -125,41 +142,42 @@ def scan_stock(symbol: str):
     last_candle = candles[-1]
     imb, side = candle_imbalance(last_candle)
     big = big_candle(last_candle, candles)
-    vfac = volatility_factor(dh, dl, hist)
-    rf = rfac(ltp, op, dh, dl, vspike, vfac)
 
-    result = {
+    vfac = volatility_factor(dh, dl, hist)
+    vwap = calculate_vwap(candles)
+
+    rf = rfac(ltp, op, dh, dl, vspike, vfac, vwap)
+
+    return {
         "symbol": symbol,
         "ltp": round(ltp, 2),
         "%": round(pc, 2),
         "signal%": round(sp, 2),
         "side": side,
         "breakout": is_breakout(pc, sp, ltp, orb, vspike),
-        "intraday_boost": is_intraday_boost(rf, pc, imb, big, vspike),
-        "rfac": round(rf, 2)
+        "intraday_boost": is_intraday_boost(rf, pc, imb, big, vspike, ltp, vwap),
+        "rfac": round(rf, 2),
     }
-
-    return result
 
 
 def run_scanner():
-    breakout_list = []
-    boost_list = []
+    breakout = []
+    boost = []
 
     for sym in INSTRUMENT_MAP.keys():
         try:
             data = scan_stock(sym)
 
             if data["breakout"]:
-                breakout_list.append(data)
+                breakout.append(data)
 
             if data["intraday_boost"]:
-                boost_list.append(data)
+                boost.append(data)
 
         except Exception:
             continue
 
-    breakout_list = sorted(breakout_list, key=lambda x: x["signal%"], reverse=True)
-    boost_list = sorted(boost_list, key=lambda x: x["rfac"], reverse=True)
+    breakout = sorted(breakout, key=lambda x: x["signal%"], reverse=True)
+    boost = sorted(boost, key=lambda x: x["rfac"], reverse=True)
 
-    return breakout_list, boost_list
+    return breakout, boost
