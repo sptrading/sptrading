@@ -2,11 +2,14 @@ import json
 from services.instrument_map import INSTRUMENT_MAP
 
 
-# -------- LOAD STORED DATA -------- #
+# -------- SAFE LOAD STORED DATA -------- #
 
 def load_live_data():
-    with open("data/live_quotes.json") as f:
-        return json.load(f)
+    try:
+        with open("data/live_quotes.json") as f:
+            return json.load(f)
+    except:
+        return {}
 
 
 # -------- MATHS -------- #
@@ -47,10 +50,7 @@ def scan_stock(symbol: str, live):
 
     pc, sp = calculate_pc_sp(ltp, prev_close, open_p)
 
-    # simple volume spike vs open move
     vspike = abs(pc) + abs(sp)
-
-    # dummy vwap approx (range midpoint)
     vwap = (dh + dl) / 2
 
     rf = rfac(ltp, open_p, dh, dl, vspike, vwap)
@@ -70,6 +70,9 @@ def scan_stock(symbol: str, live):
 
 def run_scanner():
     live = load_live_data()
+
+    if not live:
+        return [], []
 
     breakout = []
     boost = []
