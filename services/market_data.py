@@ -6,10 +6,11 @@ from services.instrument_map import INSTRUMENT_MAP
 
 def load_live_data():
     try:
-        with open("data/live_quotes.json") as f:
+        with open("/tmp/live_quotes.json") as f:
             return json.load(f)
     except:
         return {}
+
 
 
 # -------- MATHS -------- #
