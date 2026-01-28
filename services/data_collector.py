@@ -4,7 +4,8 @@ from datetime import datetime
 from config import UPSTOX_ACCESS_TOKEN
 from services.instrument_map import INSTRUMENT_MAP
 
-DATA_FILE = "data/live_quotes.json"
+DATA_FILE = "/tmp/live_quotes.json"
+
 
 HEADERS = {
     "Accept": "application/json",
