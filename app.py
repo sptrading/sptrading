@@ -1,8 +1,17 @@
-from fastapi import FastAPI
-from routes.api import router as api_router
-from routes.home import router as home_router
+from fastapi import FastAPI, Request
+from fastapi.templating import Jinja2Templates
+from fastapi.staticfiles import StaticFiles
+
+from routes.scanner import router as scanner_router
 
 app = FastAPI()
 
-app.include_router(home_router)
-app.include_router(api_router)
+app.mount("/static", StaticFiles(directory="static"), name="static")
+templates = Jinja2Templates(directory="templates")
+
+app.include_router(scanner_router)
+
+
+@app.get("/")
+def dashboard(request: Request):
+    return templates.TemplateResponse("index.html", {"request": request})
