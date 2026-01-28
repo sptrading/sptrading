@@ -3,3 +3,5 @@ uvicorn
 requests
 jinja2
 python-dotenv
+upstox-python-sdk
+websocket-client
